@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拼音学习轮盘</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&family=Kalam:wght@700&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 30% 20%, rgba(50, 50, 100, 0.4) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 80%, rgba(80, 40, 60, 0.3) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 80px;
+            /* 轮盘整体上移，为下方拼音显示空出空间 */
+        }
+
+        canvas {
+            display: block;
+            border-radius: 50%;
+            box-shadow:
+                0 0 60px rgba(0, 0, 0, 0.5),
+                0 0 120px rgba(0, 0, 0, 0.3);
+        }
+
+        .result-display {
+            position: absolute;
+            bottom: -90px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: #fff;
+            min-width: 300px;
+        }
+        .result-display .pinyin {
+            font-family: 'Kalam', 'Noto Sans SC', cursive;
+            font-size: 52px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+            color: #FFD700;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .result-display .pinyin.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .hint-bar {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.35);
+            font-size: 14px;
+            letter-spacing: 2px;
+            animation: pulse 2s ease-in-out infinite;
+            transition: opacity 0.3s;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.35;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .pointer-mark {
+            position: absolute;
+            top: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 18px solid #FFD700;
+            filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.6));
+            z-index: 10;
+        }
+
+        /* 音调面板样式 */
+        .tones-panel {
+            position: fixed;
+            right: -320px;
+            /* 初始隐藏 */
+            top: 20px;
+            bottom: 20px;
+            width: 280px;
+            background: rgba(26, 26, 46, 0.85);
+            backdrop-filter: blur(15px);
+            border-left: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 24px 0 0 24px;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            z-index: 100;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .tones-panel.show {
+            right: 0;
+        }
+
+        .tones-panel-title {
+            color: #FFD700;
+            font-size: 18px;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+            padding-bottom: 10px;
+            text-align: center;
+        }
+
+        .tone-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tone-item:hover {
+            background: rgba(255, 215, 0, 0.15);
+            border-color: #FFD700;
+            transform: translateX(-5px);
+        }
+
+        .toned-pinyin {
+            color: #FFFFFF;
+            font-size: 20px;
+            font-family: 'Times New Roman', serif;
+        }
+
+        .sample-char {
+            color: #FFD700;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .tone-hint {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+            text-align: center;
+            margin-top: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="game-container" id="gameContainer">
+        <div class="pointer-mark"></div>
+        <canvas id="wheelCanvas"></canvas>
+        <div class="result-display">
+            <div class="pinyin" id="resultPinyin"></div>
+        </div>
+    </div>
+
+    <div class="tones-panel" id="tonesPanel">
+        <div class="tones-panel-title" id="panelTitle">拼音释义</div>
+        <div id="tonesList"></div>
+        <div class="tone-hint">点击项目朗读发音</div>
+    </div>
+
+    <div class="hint-bar" id="hintBar">按 空格键 旋转轮盘</div>
+
+    <script>
+        // ==================== 数据 ====================
+        const shengmu = ['', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h', 'j', 'q', 'x', 'zh', 'ch', 'sh', 'r', 'z', 'c', 's', 'y', 'w'];
+        const yunmu = [
+            'a', 'o', 'e', 'i', 'u', 'ü',
+            'ai', 'ei', 'ui', 'ao', 'ou', 'iu', 'ie', 'üe', 'er',
+            'an', 'en', 'in', 'un', 'ün', 'ang', 'eng', 'ing', 'ong',
+            'ia', 'ua', 'uo', 'uai',
+            'ian', 'iang', 'iong', 'uan', 'uang',
+            'iao'
+        ];
+
+        // 合法拼音: 声母索引 -> 韵母索引列表（来源：valid.txt 新华字典第11版）
+        // 常用汉字字典 (Base Pinyin -> [1, 2, 3, 4] Tones)
+        // 覆盖大部分常用组合，确保用户按回车有反馈
+        const commonWords = {
+            "ba": ["八", "拔", "把", "爸"], "bo": ["波", "驳", "簸", "播"], "bi": ["逼", "鼻", "比", "币"], "bu": ["不", "补", "布", "步"], "bie": ["别", "瘪", "憋", "蹩"],
+            "pa": ["趴", "爬", "怕", "帕"], "po": ["破", "婆", "迫", "泼"], "pi": ["皮", "匹", "屁", "譬"], "pu": ["铺", "葡萄", "普", "瀑"], "pie": ["瞥", "撇", "苤"],
+            "ma": ["妈", "麻", "马", "骂"], "mo": ["模", "魔", "抹", "末"], "mi": ["迷", "米", "密", "蜜"], "mu": ["木", "母", "墓", "牧"], "me": ["么"], "mie": ["灭", "蔑", "咩"],
+            "fa": ["法", "伐", "发", "罚"], "fo": ["佛"], "fu": ["夫", "福", "腐", "父"],
+            "da": ["搭", "达", "打", "大"], "de": ["得", "德", "地", "底"], "di": ["低", "敌", "底", "第"], "du": ["都", "读", "堵", "度"], "die": ["爹", "叠", "跌", "蝶"],
+            "ta": ["他", "塔", "踏", "踏"], "te": ["特"], "ti": ["梯", "题", "体", "替"], "tu": ["突", "图", "土", "吐"], "tie": ["铁", "贴", "帖", "萜"],
+            "na": ["哪", "拿", "哪", "那"], "ne": ["那", "呢"], "ni": ["泥", "尼", "你", "逆"], "nu": ["努", "奴", "怒"], "nü": ["女儿", "女"], "nie": ["捏", "聂", "蹑", "孽"],
+            "la": ["拉", "喇", "落", "辣"], "le": ["乐"], "li": ["离", "黎", "里", "利"], "lu": ["路", "卢", "鲁", "落"], "lü": ["驴", "旅", "绿"], "lie": ["列", "烈", "劣", "猎"],
+            "ga": ["尬"], "ge": ["哥", "隔", "个", "各"], "gu": ["估", "古", "骨", "故"],
+            "ka": ["卡"], "ke": ["科", "壳", "渴", "客"], "ku": ["哭", "库", "苦", "裤"],
+            "ha": ["哈"], "he": ["喝", "河", "和", "贺"], "hu": ["呼", "胡", "虎", "护"],
+            "ji": ["机", "级", "几", "记"], "jia": ["家", "侠", "甲", "价"], "jie": ["阶", "节", "姐", "界"], "jiao": ["交", "脚", "角", "叫"], "jiu": ["究", "九", "酒", "旧"], "jian": ["间", "简", "减", "见"], "jin": ["金", "筋", "紧", "进"], "jiang": ["江", "将", "讲", "降"], "jing": ["精", "睛", "景", "静"], "jiong": ["窘"], "ju": ["居", "局", "举", "句"], "juan": ["捐", "卷", "眷"], "jun": ["均", "君", "军", "俊"],
+            "qi": ["七", "齐", "起", "汽"], "qia": ["卡", "洽"], "qie": ["切", "且", "妾"], "qiao": ["敲", "桥", "巧", "窍"], "qiu": ["秋", "球"], "qian": ["千", "钱", "浅", "欠"], "qin": ["亲", "琴", "寝", "沁"], "qiang": ["枪", "强", "抢", "呛"], "qing": ["清", "情", "请", "庆"], "qiong": ["穷"], "qu": ["区", "渠", "取", "去"], "quan": ["全", "犬", "劝"], "qun": ["群"],
+            "xi": ["西", "席", "喜", "戏"], "xia": ["下", "虾", "峡", "瞎"], "xie": ["歇", "鞋", "写", "谢"], "xiao": ["消", "小", "笑", "效"], "xiu": ["修", "秀", "朽"], "xian": ["先", "闲", "险", "现"], "xin": ["新", "辛", "信"], "xiang": ["香", "详", "想", "向"], "xing": ["星", "行", "醒", "姓"], "xiong": ["兄", "凶", "雄"], "xu": ["需", "徐", "许", "续"], "xuan": ["宣", "选", "眩"], "xun": ["循", "寻", "训", "讯"],
+            "zha": ["渣", "炸", "闸", "炸"], "zhe": ["遮", "哲", "者", "这"], "zhi": ["之", "直", "止", "值"], "zhu": ["珠", "逐", "主", "注"], "zhai": ["摘", "宅", "窄", "债"], "zhao": ["招", "着", "找", "照"], "zhou": ["舟", "州", "轴", "咒"], "zhan": ["占", "站", "斩", "展"], "zhen": ["真", "侦", "珍", "震"], "zhang": ["张", "章", "长", "掌"], "zheng": ["征", "蒸", "整", "正"], "zhong": ["中", "终", "种", "众"],
+            "cha": ["插", "茶", "查", "彻"], "che": ["车", "扯", "尺", "撤"], "chi": ["吃", "持", "尺", "翅"], "chu": ["初", "除", "楚", "处"], "chai": ["拆", "柴"], "chao": ["超", "潮", "炒", "绰"], "chou": ["抽", "愁", "丑", "臭"], "chan": ["产", "禅", "阐", "颤"], "chen": ["晨", "沉", "陈", "衬"], "chang": ["常", "长", "场", "唱"], "cheng": ["成", "诚", "呈", "称"], "chong": ["冲", "重", "崇", "充"],
+            "sha": ["杀", "沙", "傻", "霎"], "she": ["奢", "蛇", "舌", "摄"], "shi": ["师", "时", "始", "是"], "shu": ["书", "熟", "暑", "树"], "shai": ["筛", "晒"], "shao": ["烧", "勺", "少", "哨"], "shou": ["收", "手", "守", "受"], "shan": ["山", "闪", "善", "扇"], "shen": ["深", "神", "审", "慎"], "shang": ["伤", "商", "上", "赏"], "sheng": ["生", "胜", "圣", "升"],
+            "re": ["热"], "ri": ["日"], "ru": ["如", "儒", "乳", "入"], "rou": ["肉"], "ran": ["然", "染"], "ren": ["人", "忍", "任"], "rang": ["让", "嚷"], "reng": ["仍"], "rong": ["容", "融", "荣"],
+            "zai": ["灾", "在", "载"], "ze": ["择", "则", "责"], "zi": ["资", "子", "字", "自"], "zu": ["足", "阻", "祖"], "zang": ["脏", "藏"], "zeng": ["增", "赠"], "zong": ["总", "纵", "综"],
+            "cai": ["彩", "猜", "踩", "菜"], "ce": ["厕", "策", "测"], "ci": ["磁", "词", "辞", "次"], "cu": ["促", "粗", "醋"], "can": ["餐", "残", "惨", "灿"], "cen": ["参"], "cang": ["仓", "藏"], "ceng": ["层", "蹭"], "cong": ["从", "聪", "葱"],
+            "sai": ["赛", "腮"], "se": ["色", "瑟"], "si": ["丝", "斯", "死", "四"], "su": ["宿", "酥", "苏", "速"], "san": ["三", "伞", "散"], "sen": ["森"], "sang": ["桑", "丧"], "seng": ["僧"], "song": ["松", "耸", "送"],
+            "ya": ["压", "牙", "雅", "亚"], "ye": ["爷", "也", "夜", "叶"], "yao": ["腰", "遥", "咬", "药"], "you": ["优", "由", "有", "右"], "yan": ["烟", "沿", "眼", "验"], "yin": ["阴", "因", "饮", "印"], "yang": ["央", "羊", "养", "样"], "ying": ["英", "赢", "影", "映"], "yong": ["庸", "拥", "永", "用"],
+            "wa": ["蛙", "娃", "瓦", "袜"], "wo": ["我", "握", "沃", "窝"], "wai": ["外", "歪"], "wei": ["威", "危", "味", "未"], "wan": ["弯", "玩", "碗", "万"], "wen": ["文", "闻", "稳", "问"], "wang": ["汪", "王", "往", "旺"], "weng": ["翁", "瓮"],
+            "ai": ["哎", "癌", "矮", "爱"], "en": ["恩"], "ou": ["欧", "偶", "鸥"], "an": ["安", "案", "暗"], "er": ["儿", "二", "耳"], "ang": ["肮"],
+            "a": ["阿", "啊", "阿", "啊"], "ao": ["熬", "傲", "凹", "奥"], "e": ["鹅", "额", "恶", "饿"], "ei": ["诶"], "eng": ["亨"], "o": ["喔", "哦", "噢"],
+            "que": ["缺", "瘸", "榷"], "xue": ["学", "雪", "穴"], "jue": ["觉", "绝", "决"], "yue": ["月", "乐", "越"]
+        };
+
+        const toneChars = {
+            'a': ['ā', 'á', 'ǎ', 'à'], 'o': ['ō', 'ó', 'ǒ', 'ò'], 'e': ['ē', 'é', 'ě', 'è'],
+            'i': ['ī', 'í', 'ǐ', 'ì'], 'u': ['ū', 'ú', 'ǔ', 'ù'], 'ü': ['ǖ', 'ǘ', 'ǚ', 'ǜ']
+        };
+
+        // 拼音加样标逻辑
+        function markPinyin(base, tone) {
+            if (tone < 1 || tone > 4) return base;
+            const idx = tone - 1;
+            // 优先级顺序：a, o, e, i, u, ü
+            // 特例：iu 标在 u 上, ui 标在 i 上
+            let res = base.replace('ü', 'v'); // 处理输入
+            if (res.includes('a')) res = res.replace('a', toneChars['a'][idx]);
+            else if (res.includes('o')) res = res.replace('o', toneChars['o'][idx]);
+            else if (res.includes('e')) res = res.replace('e', toneChars['e'][idx]);
+            else if (res.includes('iu')) res = res.replace('u', toneChars['u'][idx]);
+            else if (res.includes('ui')) res = res.replace('i', toneChars['i'][idx]);
+            else if (res.includes('i')) res = res.replace('i', toneChars['i'][idx]);
+            else if (res.includes('u')) res = res.replace('u', toneChars['u'][idx]);
+            else if (res.includes('v')) res = res.replace('v', toneChars['ü'][idx]);
+            return res.replace('v', 'ü');
+        }
+
+        const validPinyinMap = {};
+        const validPinyinSet = new Set();
+        (function buildValid() {
+            const map = {
+                '': ['a', 'ai', 'an', 'ang', 'ao', 'e', 'ei', 'en', 'eng', 'er', 'o', 'ou'],
+                // bu/pu/mu/fu 为常用音节，valid.txt中遗漏已补回；删除 bia/pia/mia/dia/tia/nia 等无效组合
+                'b': ['a', 'o', 'i', 'u', 'ai', 'ei', 'ao', 'an', 'en', 'ang', 'eng', 'ie', 'iao', 'ian', 'in', 'ing'],
+                'p': ['a', 'o', 'i', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ie', 'iao', 'ian', 'in', 'ing'],
+                'm': ['a', 'o', 'e', 'i', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ie', 'iao', 'iu', 'ian', 'in', 'ing'],
+                'f': ['a', 'o', 'u', 'ei', 'ou', 'an', 'en', 'ang', 'eng'],
+                'd': ['a', 'e', 'i', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'ang', 'eng', 'ie', 'iao', 'iu', 'ian', 'ing', 'ong', 'uo', 'ui', 'uan', 'un'],
+                't': ['a', 'e', 'i', 'u', 'ai', 'ao', 'ou', 'an', 'ang', 'eng', 'ie', 'iao', 'ian', 'ing', 'ong', 'uo', 'ui', 'uan', 'un'],
+                'n': ['a', 'e', 'i', 'u', 'ü', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ie', 'iao', 'iu', 'ian', 'in', 'iang', 'ing', 'üe', 'ong', 'uo', 'uan'],
+                'l': ['a', 'e', 'i', 'u', 'ü', 'ai', 'ei', 'ao', 'ou', 'an', 'ang', 'eng', 'ia', 'ie', 'iao', 'iu', 'ian', 'in', 'iang', 'ing', 'üe', 'ong', 'uo', 'uan', 'un'],
+                'g': ['a', 'e', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ong', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                'k': ['a', 'e', 'u', 'ai', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ong', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                'h': ['a', 'e', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ong', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                // j/q/x:
+                // - u(4)=ju/qu/xu, ü(5)=ju/qu/xu (ü 在 j/q/x 后写为 u，两个格都是有效的！)
+                // - un(18)=jun/qun/xun, ün(19)=jun/qun/xun (同上）
+                // - ue 映射到 üe（见下方特殊处理）
+                'j': ['i', 'ia', 'ie', 'iao', 'iu', 'ian', 'in', 'iang', 'ing', 'iong', 'ue', 'u', 'ü', 'uan', 'un', 'ün'],
+                'q': ['i', 'ia', 'ie', 'iao', 'iu', 'ian', 'in', 'iang', 'ing', 'iong', 'ue', 'u', 'ü', 'uan', 'un', 'ün'],
+                'x': ['i', 'ia', 'ie', 'iao', 'iu', 'ian', 'in', 'iang', 'ing', 'iong', 'ue', 'u', 'ü', 'uan', 'un', 'ün'],
+                'zh': ['a', 'e', 'i', 'u', 'ai', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ong', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                'ch': ['a', 'e', 'i', 'u', 'ai', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ong', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                'sh': ['a', 'e', 'i', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'ua', 'uo', 'uai', 'ui', 'uan', 'un', 'uang'],
+                'r': ['e', 'i', 'u', 'ao', 'ou', 'an', 'ang', 'en', 'eng', 'ong', 'uo', 'uan', 'un', 'ui'],
+                'z': ['a', 'e', 'i', 'u', 'ai', 'ei', 'ao', 'ou', 'an', 'ang', 'en', 'eng', 'ong', 'uo', 'uan', 'un', 'ui'],
+                'c': ['a', 'e', 'i', 'u', 'ai', 'ao', 'ou', 'an', 'ang', 'en', 'eng', 'ong', 'uo', 'uan', 'un', 'ui'],
+                's': ['a', 'e', 'i', 'u', 'ai', 'ao', 'ou', 'an', 'ang', 'en', 'eng', 'ong', 'uo', 'uan', 'un', 'ui'],
+                'y': ['a', 'ao', 'an', 'ang', 'e', 'i', 'in', 'ing', 'ong', 'ou', 'u', 'uan', 'ue', 'un'],
+                'w': ['a', 'ai', 'an', 'ang', 'ei', 'en', 'eng', 'o', 'u'],
+            };
+            for (const [s, ys] of Object.entries(map)) {
+                const si = shengmu.indexOf(s);
+                if (si < 0) continue;
+                validPinyinMap[si] = [];
+                ys.forEach(y => {
+                    // 'ue' 在韵母表没有，映射到 'üe'
+                    let yi = yunmu.indexOf(y);
+                    if (yi < 0 && y === 'ue') yi = yunmu.indexOf('üe');
+                    if (yi >= 0) {
+                        validPinyinMap[si].push(yi);
+                        validPinyinSet.add(s + y);
+                    }
+                });
+            }
+        })();
+
+        // 随机选择一个有效的拼音组合，返回 {shengmuIdx, yunmuIdx}
+        function pickValidPinyin() {
+            const shengmuKeys = Object.keys(validPinyinMap).map(Number);
+            const si = shengmuKeys[Math.floor(Math.random() * shengmuKeys.length)];
+            const yunmuOptions = validPinyinMap[si];
+            const yi = yunmuOptions[Math.floor(Math.random() * yunmuOptions.length)];
+            return { shengmuIdx: si, yunmuIdx: yi };
+        }
+
+        // ==================== Canvas 设置 ====================
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const DPR = window.devicePixelRatio || 1;
+        const CANVAS_CSS_SIZE = Math.min(window.innerWidth * 0.85, window.innerHeight * 0.75, 700);
+        canvas.style.width = CANVAS_CSS_SIZE + 'px';
+        canvas.style.height = CANVAS_CSS_SIZE + 'px';
+        canvas.width = CANVAS_CSS_SIZE * DPR;
+        canvas.height = CANVAS_CSS_SIZE * DPR;
+        ctx.scale(DPR, DPR);
+
+        const CX = CANVAS_CSS_SIZE / 2;
+        const CY = CANVAS_CSS_SIZE / 2;
+        const R = CANVAS_CSS_SIZE / 2;
+
+        // 轮盘尺寸
+        const OUTER_R = R * 0.96;
+        const OUTER_INNER_R = R * 0.62;
+        const INNER_R = R * 0.58;
+        const INNER_INNER_R = R * 0.30;
+        const CENTER_R = R * 0.26;
+
+        // 木条参数
+        const RAIL_WIDTH = R * 0.022;
+        const RAIL_COLOR_LIGHT = '#c9a85c';
+        const RAIL_COLOR_DARK = '#8b6914';
+        const RAIL_COLOR_MID = '#a88932';
+        const RAIL_HIGHLIGHT = '#e6d48a';
+
+        // 球参数
+        const OUTER_BALL_R = R * 0.044;
+        const INNER_BALL_R = R * 0.038;
+        const OUTER_BALL_TRACK_R = (OUTER_R + OUTER_INNER_R) / 2;
+        const INNER_BALL_TRACK_R = (INNER_R + INNER_INNER_R) / 2;
+
+        // 颜色
+        const OUTER_BG_COLORS = ['#1a1a2e', '#16213e'];
+        const INNER_BG_COLORS = ['#6b1527', '#5a1020'];
+
+        // ==================== 物理状态 ====================
+        const state = {
+            outerAngle: 0,
+            innerAngle: 0,
+            outerVelocity: 0,
+            innerVelocity: 0,
+            outerSpinning: false,
+            innerSpinning: false,
+
+            // 盘子目标最大速度（用于加速阶段）
+            outerTargetVel: 0,
+            innerTargetVel: 0,
+
+            // 球的独立物理
+            outerBallOffset: 0,
+            innerBallOffset: 0,
+            outerBallVelocity: 0,
+            innerBallVelocity: 0,
+            outerBallRadialOffset: 0,
+            innerBallRadialOffset: 0,
+            outerBallRadialVel: 0,
+            innerBallRadialVel: 0,
+            outerSettleTarget: 0,   // settling 阶段：球要滑向的格子中心角度
+            innerSettleTarget: 0,
+            finalShengmuIdx: 0,     // 对次旋转结果的最终声母索引（设置于 settling 开始）
+            finalYunmuIdx: 0,     // 对次旋转结果的最终韵母索引
+
+            // 'idle' | 'accelerating' | 'cruising' | 'decelerating' | 'settling'
+            phase: 'idle',
+            settleTimer: 0,
+            spinStartTime: 0,      // 记录旋转开始时间
+            accelDuration: 1500,    // 加速持续时间(ms) ~1.5秒
+            autoStopTime: 10000,    // 自动停止时间(ms) 10秒
+
+            // 目标停止位置（预算有效拼音）
+            targetOuterAngle: null,
+            targetInnerAngle: null,
+            targetPinyin: null,
+
+            // 锁定功能
+            lockedShengmuIdx: null,
+            lockedYunmuIdx: null
+        };
+
+        let animFrameId = null;
+        let lastTime = 0;
+        let lastOuterSector = -1;
+        let lastInnerSector = -1;
+
+        // ==================== 音频 ====================
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playTick(freq = 400, vol = 0.08, dur = 0.04) {
+            initAudio();
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g); g.connect(audioCtx.destination);
+            o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(vol, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            o.start(); o.stop(audioCtx.currentTime + dur);
+        }
+
+        function playBounce(intensity = 1) {
+            playTick(200 + intensity * 300, 0.05 * intensity, 0.04);
+        }
+
+        function playStartSound() {
+            initAudio();
+            [600, 800, 1000].forEach((f, i) => {
+                setTimeout(() => playTick(f, 0.12, 0.06), i * 40);
+            });
+        }
+
+        function playStopSound() {
+            initAudio();
+            playTick(500, 0.18, 0.15);
+            setTimeout(() => playTick(300, 0.10, 0.2), 80);
+        }
+
+        function playWinSound() {
+            initAudio();
+            [523, 659, 784, 1047].forEach((f, i) => {
+                setTimeout(() => playTick(f, 0.16, 0.25), i * 100);
+            });
+        }
+
+        // ==================== 绘制函数 ====================
+
+        function drawSector(cx, cy, innerR, outerR, startAngle, endAngle, baseColor) {
+            const s = (startAngle - 90) * Math.PI / 180;
+            const e = (endAngle - 90) * Math.PI / 180;
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerR, s, e);
+            ctx.arc(cx, cy, innerR, e, s, true);
+            ctx.closePath();
+
+            // 创建径向渐变模拟坡度 (里高外低)
+            const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+            // 内部较亮，外部较暗
+            grad.addColorStop(0, hexToRgba(baseColor, 1.25)); // 略亮
+            grad.addColorStop(0.3, baseColor);
+            grad.addColorStop(1, hexToRgba(baseColor, 0.7));  // 略暗
+
+            ctx.fillStyle = grad;
+            ctx.fill();
+        }
+
+        // 辅助函数：调整颜色亮度
+        function hexToRgba(hex, factor) {
+            // 简单的亮度调整逻辑
+            let r = parseInt(hex.slice(1, 3), 16);
+            let g = parseInt(hex.slice(3, 5), 16);
+            let b = parseInt(hex.slice(5, 7), 16);
+            r = Math.min(255, Math.floor(r * factor));
+            g = Math.min(255, Math.floor(g * factor));
+            b = Math.min(255, Math.floor(b * factor));
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function drawLockedGlow(cx, cy, innerR, outerR, startAngle, endAngle) {
+            const s = (startAngle - 90) * Math.PI / 180;
+            const e = (endAngle - 90) * Math.PI / 180;
+
+            ctx.save();
+
+            // 创建扇区路径
+            const p = new Path2D();
+            p.arc(cx, cy, outerR, s, e);
+            p.arc(cx, cy, innerR, e, s, true);
+            p.closePath();
+
+            // 1. 剪裁：确保光线只在格子内部可见
+            ctx.clip(p);
+
+            // 2. 绘制背景基光 (略微增强)
+            ctx.fillStyle = 'rgba(0, 242, 255, 0.15)';
+            ctx.fill(p);
+
+            // 3. 增强版荧光效果
+            // 使用 lighter 混合模式让颜色更加饱和鲜艳
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowColor = '#00f2ff';
+
+            // 第一层：核心高亮线 (非常明亮，范围窄)
+            ctx.strokeStyle = 'rgba(200, 255, 255, 0.9)';
+            ctx.shadowBlur = 8;
+            ctx.lineWidth = 4;
+            ctx.stroke(p);
+
+            // 第二层：主发光层
+            ctx.strokeStyle = 'rgba(0, 242, 255, 0.8)';
+            ctx.shadowBlur = 25;
+            ctx.lineWidth = 2.5;
+            ctx.stroke(p);
+
+            // 第三层：深层晕染 (增强范围和不透明度)
+            ctx.strokeStyle = 'rgba(0, 242, 255, 0.6)';
+            ctx.shadowBlur = 50;
+            ctx.lineWidth = 1.5;
+            ctx.stroke(p);
+
+            // 第四层：广域微光
+            ctx.strokeStyle = 'rgba(0, 242, 255, 0.3)';
+            ctx.shadowBlur = 80;
+            ctx.lineWidth = 1;
+            ctx.stroke(p);
+
+            ctx.restore();
+        }
+
+        function drawRail(cx, cy, innerR, outerR, angle) {
+            const rad = (angle - 90) * Math.PI / 180;
+            const x1 = cx + innerR * Math.cos(rad);
+            const y1 = cy + innerR * Math.sin(rad);
+            const x2 = cx + outerR * Math.cos(rad);
+            const y2 = cy + outerR * Math.sin(rad);
+            const perpX = -Math.sin(rad) * RAIL_WIDTH / 2;
+            const perpY = Math.cos(rad) * RAIL_WIDTH / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(x1 - perpX, y1 - perpY);
+            ctx.lineTo(x2 - perpX, y2 - perpY);
+            ctx.lineTo(x2 + perpX, y2 + perpY);
+            ctx.lineTo(x1 + perpX, y1 + perpY);
+            ctx.closePath();
+
+            const grad = ctx.createLinearGradient(
+                x1 - perpX, y1 - perpY, x1 + perpX, y1 + perpY
+            );
+            grad.addColorStop(0, RAIL_COLOR_DARK);
+            grad.addColorStop(0.3, RAIL_HIGHLIGHT);
+            grad.addColorStop(0.5, RAIL_COLOR_LIGHT);
+            grad.addColorStop(0.7, RAIL_COLOR_MID);
+            grad.addColorStop(1, RAIL_COLOR_DARK);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(139, 105, 20, 0.5)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        }
+
+        function drawCircularRail(cx, cy, r, width) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.lineWidth = width;
+            const grad = ctx.createRadialGradient(cx, cy, r - width / 2, cx, cy, r + width / 2);
+            grad.addColorStop(0, RAIL_COLOR_DARK);
+            grad.addColorStop(0.25, RAIL_COLOR_LIGHT);
+            grad.addColorStop(0.5, RAIL_HIGHLIGHT);
+            grad.addColorStop(0.75, RAIL_COLOR_MID);
+            grad.addColorStop(1, RAIL_COLOR_DARK);
+            ctx.strokeStyle = grad;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, r - width / 2, 0, Math.PI * 2);
+            ctx.lineWidth = 0.5;
+            ctx.strokeStyle = 'rgba(100, 70, 10, 0.4)';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r + width / 2, 0, Math.PI * 2);
+            ctx.lineWidth = 0.5;
+            ctx.strokeStyle = 'rgba(100, 70, 10, 0.4)';
+            ctx.stroke();
+        }
+
+        function drawText(text, cx, cy, r, angle, fontSize, color) {
+            const rad = (angle - 90) * Math.PI / 180;
+            const x = cx + r * Math.cos(rad);
+            const y = cy + r * Math.sin(rad);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate((angle) * Math.PI / 180);
+            ctx.font = `bold ${fontSize}px 'Kalam', 'Noto Sans SC', cursive`;
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 3;
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+
+        // 透明玻璃弹珠绘制
+        function drawGlassBall(x, y, r, tint) {
+            // tint: 'gold' 或 'clear'
+            ctx.save();
+
+            // 球的投影
+            ctx.beginPath();
+            ctx.ellipse(x + 2, y + 3, r * 1.0, r * 0.6, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0,0,0,0.28)';
+            ctx.fill();
+
+            // 球体基色 — 半透明玻璃感，但足够可见
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            const baseGrad = ctx.createRadialGradient(
+                x - r * 0.25, y - r * 0.25, r * 0.05,
+                x, y, r
+            );
+            if (tint === 'gold') {
+                // 金黄色玻璃弹珠，半透明但清晰可见
+                baseGrad.addColorStop(0, 'rgba(255, 245, 200, 0.75)');
+                baseGrad.addColorStop(0.35, 'rgba(255, 210, 80, 0.60)');
+                baseGrad.addColorStop(0.65, 'rgba(200, 155, 30, 0.50)');
+                baseGrad.addColorStop(0.85, 'rgba(160, 115, 20, 0.55)');
+                baseGrad.addColorStop(1, 'rgba(110, 75, 10, 0.65)');
+            } else {
+                // 浅蓝/白色透明玻璃弹珠
+                baseGrad.addColorStop(0, 'rgba(220, 235, 255, 0.70)');
+                baseGrad.addColorStop(0.35, 'rgba(180, 205, 240, 0.55)');
+                baseGrad.addColorStop(0.65, 'rgba(140, 165, 205, 0.45)');
+                baseGrad.addColorStop(0.85, 'rgba(100, 125, 170, 0.52)');
+                baseGrad.addColorStop(1, 'rgba(65,  90, 135, 0.60)');
+            }
+            ctx.fillStyle = baseGrad;
+            ctx.fill();
+
+            // 内部折射光效（模拟玻璃内部结构）
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            const causticGrad = ctx.createRadialGradient(
+                x + r * 0.1, y + r * 0.2, 0,
+                x + r * 0.1, y + r * 0.2, r * 0.65
+            );
+            if (tint === 'gold') {
+                causticGrad.addColorStop(0, 'rgba(255, 235, 130, 0.50)');
+                causticGrad.addColorStop(0.5, 'rgba(255, 200, 80, 0.20)');
+                causticGrad.addColorStop(1, 'rgba(255, 170, 40, 0)');
+            } else {
+                causticGrad.addColorStop(0, 'rgba(210, 230, 255, 0.45)');
+                causticGrad.addColorStop(0.5, 'rgba(180, 205, 245, 0.18)');
+                causticGrad.addColorStop(1, 'rgba(150, 175, 220, 0)');
+            }
+            ctx.fillStyle = causticGrad;
+            ctx.fill();
+
+            // 玻璃弹珠内部装饰纹路（漩涡/花纹）
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, r * 0.82, 0, Math.PI * 2);
+            ctx.clip();
+            if (tint === 'gold') {
+                ctx.beginPath();
+                ctx.arc(x - r * 0.08, y + r * 0.04, r * 0.32, 0, Math.PI * 1.6);
+                ctx.lineWidth = r * 0.14;
+                ctx.strokeStyle = 'rgba(255, 175, 45, 0.40)';
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x + r * 0.12, y - r * 0.08, r * 0.18, 0.5, Math.PI * 1.7);
+                ctx.lineWidth = r * 0.09;
+                ctx.strokeStyle = 'rgba(255, 200, 80, 0.35)';
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.arc(x - r * 0.05, y + r * 0.05, r * 0.28, 0, Math.PI * 1.5);
+                ctx.lineWidth = r * 0.12;
+                ctx.strokeStyle = 'rgba(100, 155, 230, 0.40)';
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x + r * 0.1, y - r * 0.12, r * 0.16, 0.3, Math.PI * 1.5);
+                ctx.lineWidth = r * 0.08;
+                ctx.strokeStyle = 'rgba(130, 170, 240, 0.35)';
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // 玻璃外壳边缘折射（彩色边缘）
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.lineWidth = r * 0.13;
+            ctx.strokeStyle = tint === 'gold'
+                ? 'rgba(255, 215, 0, 0.40)'
+                : 'rgba(180, 210, 255, 0.38)';
+            ctx.stroke();
+
+            // 主高光 - 左上角大亮斑
+            ctx.beginPath();
+            const hlGrad = ctx.createRadialGradient(
+                x - r * 0.28, y - r * 0.28, 0,
+                x - r * 0.28, y - r * 0.28, r * 0.52
+            );
+            hlGrad.addColorStop(0, 'rgba(255,255,255,0.98)');
+            hlGrad.addColorStop(0.25, 'rgba(255,255,255,0.65)');
+            hlGrad.addColorStop(0.6, 'rgba(255,255,255,0.15)');
+            hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = hlGrad;
+            ctx.fill();
+
+            // 次高光 - 右上小点
+            ctx.beginPath();
+            ctx.arc(x + r * 0.22, y - r * 0.30, r * 0.09, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
+            ctx.fill();
+
+            // 底部柔和反光
+            ctx.beginPath();
+            const bottomGrad = ctx.createRadialGradient(
+                x + r * 0.08, y + r * 0.38, 0,
+                x + r * 0.08, y + r * 0.38, r * 0.32
+            );
+            bottomGrad.addColorStop(0, 'rgba(255,255,255,0.22)');
+            bottomGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = bottomGrad;
+            ctx.fill();
+
+            // 最外层玻璃壳的微弱边线
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.lineWidth = 0.8;
+            if (tint === 'gold') {
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.35)';
+            } else {
+                ctx.strokeStyle = 'rgba(180, 200, 230, 0.3)';
+            }
+            ctx.stroke();
+
+            // 外发光
+            ctx.beginPath();
+            ctx.arc(x, y, r + 1, 0, Math.PI * 2);
+            if (tint === 'gold') {
+                ctx.shadowColor = 'rgba(255, 215, 0, 0.3)';
+            } else {
+                ctx.shadowColor = 'rgba(180, 200, 255, 0.25)';
+            }
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = 'transparent';
+            ctx.lineWidth = 0;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // ==================== 主绘制 ====================
+        function draw() {
+            ctx.clearRect(0, 0, CANVAS_CSS_SIZE, CANVAS_CSS_SIZE);
+
+            // 背景圆
+            ctx.beginPath();
+            ctx.arc(CX, CY, R, 0, Math.PI * 2);
+            const bgGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, R);
+            bgGrad.addColorStop(0, '#2a2a4a');
+            bgGrad.addColorStop(1, '#0f0f1f');
+            ctx.fillStyle = bgGrad;
+            ctx.fill();
+
+            // === 外圈盘子 ===
+            ctx.save();
+            ctx.translate(CX, CY);
+            ctx.rotate(state.outerAngle * Math.PI / 180);
+            ctx.translate(-CX, -CY);
+
+            const yunmuCount = yunmu.length;
+            const yunmuDeg = 360 / yunmuCount;
+
+            for (let i = 0; i < yunmuCount; i++) {
+                const startA = i * yunmuDeg;
+                const endA = (i + 1) * yunmuDeg;
+                drawSector(CX, CY, OUTER_INNER_R, OUTER_R, startA, endA, OUTER_BG_COLORS[i % 2]);
+            }
+
+            if (state.lockedYunmuIdx !== null) {
+                const i = state.lockedYunmuIdx;
+                drawLockedGlow(CX, CY, OUTER_INNER_R, OUTER_R, i * yunmuDeg, (i + 1) * yunmuDeg);
+            }
+
+            for (let i = 0; i < yunmuCount; i++) {
+                drawRail(CX, CY, OUTER_INNER_R - RAIL_WIDTH * 0.3, OUTER_R + RAIL_WIDTH * 0.3, i * yunmuDeg);
+            }
+
+            drawCircularRail(CX, CY, OUTER_R, RAIL_WIDTH * 1.2);
+            drawCircularRail(CX, CY, OUTER_INNER_R, RAIL_WIDTH * 1.0);
+
+            const yunmuTextR = (OUTER_R + OUTER_INNER_R) / 2;
+            const yunmuFontSize = Math.max(10, R * 0.045);
+            for (let i = 0; i < yunmuCount; i++) {
+                drawText(yunmu[i], CX, CY, yunmuTextR, i * yunmuDeg + yunmuDeg / 2, yunmuFontSize, '#FFD700');
+            }
+            ctx.restore();
+
+            // === 内圈盘子 ===
+            ctx.save();
+            ctx.translate(CX, CY);
+            ctx.rotate(state.innerAngle * Math.PI / 180);
+            ctx.translate(-CX, -CY);
+
+            const shengmuCount = shengmu.length;
+            const shengmuDeg = 360 / shengmuCount;
+
+            ctx.beginPath();
+            ctx.arc(CX, CY, INNER_R + RAIL_WIDTH, 0, Math.PI * 2);
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fill();
+
+            for (let i = 0; i < shengmuCount; i++) {
+                const startA = i * shengmuDeg;
+                const endA = (i + 1) * shengmuDeg;
+                drawSector(CX, CY, INNER_INNER_R, INNER_R, startA, endA, INNER_BG_COLORS[i % 2]);
+            }
+
+            if (state.lockedShengmuIdx !== null) {
+                const i = state.lockedShengmuIdx;
+                drawLockedGlow(CX, CY, INNER_INNER_R, INNER_R, i * shengmuDeg, (i + 1) * shengmuDeg);
+            }
+
+            for (let i = 0; i < shengmuCount; i++) {
+                drawRail(CX, CY, INNER_INNER_R - RAIL_WIDTH * 0.3, INNER_R + RAIL_WIDTH * 0.3, i * shengmuDeg);
+            }
+
+            drawCircularRail(CX, CY, INNER_R, RAIL_WIDTH * 1.0);
+            drawCircularRail(CX, CY, INNER_INNER_R, RAIL_WIDTH * 0.9);
+
+            const shengmuTextR = (INNER_R + INNER_INNER_R) / 2;
+            const shengmuFontSize = Math.max(11, R * 0.05);
+            for (let i = 0; i < shengmuCount; i++) {
+                drawText(shengmu[i], CX, CY, shengmuTextR, i * shengmuDeg + shengmuDeg / 2, shengmuFontSize, '#FFFFFF');
+            }
+            ctx.restore();
+
+            // === 中心装饰 ===
+            ctx.beginPath();
+            ctx.arc(CX, CY, CENTER_R, 0, Math.PI * 2);
+            const centerGrad = ctx.createRadialGradient(CX - CENTER_R * 0.2, CY - CENTER_R * 0.2, 0, CX, CY, CENTER_R);
+            centerGrad.addColorStop(0, '#3a2010');
+            centerGrad.addColorStop(0.5, '#2a1508');
+            centerGrad.addColorStop(1, '#1a0a04');
+            ctx.fillStyle = centerGrad;
+            ctx.fill();
+            drawCircularRail(CX, CY, CENTER_R, RAIL_WIDTH * 0.8);
+
+            ctx.save();
+            ctx.font = `bold ${R * 0.06}px 'Noto Sans SC', sans-serif`;
+            ctx.fillStyle = '#c9a85c';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4;
+            ctx.fillText('拼音', CX, CY - R * 0.03);
+            ctx.font = `bold ${R * 0.04}px 'Noto Sans SC', sans-serif`;
+            ctx.fillStyle = '#a88932';
+            ctx.fillText('轮盘', CX, CY + R * 0.05);
+            ctx.restore();
+
+            // === 球 ===
+            const outerBallAngle = state.outerAngle + state.outerBallOffset;
+            const outerBallTrackR = OUTER_BALL_TRACK_R + state.outerBallRadialOffset;
+            const outerBallRad = (outerBallAngle - 90) * Math.PI / 180;
+            const outerBallX = CX + outerBallTrackR * Math.cos(outerBallRad);
+            const outerBallY = CY + outerBallTrackR * Math.sin(outerBallRad);
+            drawGlassBall(outerBallX, outerBallY, OUTER_BALL_R, 'gold');
+
+            const innerBallAngle = state.innerAngle + state.innerBallOffset;
+            const innerBallTrackR = INNER_BALL_TRACK_R + state.innerBallRadialOffset;
+            const innerBallRad = (innerBallAngle - 90) * Math.PI / 180;
+            const innerBallX = CX + innerBallTrackR * Math.cos(innerBallRad);
+            const innerBallY = CY + innerBallTrackR * Math.sin(innerBallRad);
+            drawGlassBall(innerBallX, innerBallY, INNER_BALL_R, 'clear');
+
+            // === 指针线 ===
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(CX, CY - OUTER_R - RAIL_WIDTH * 2);
+            ctx.lineTo(CX, CY - OUTER_INNER_R + RAIL_WIDTH);
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
+
+        // ==================== 物理更新 ====================
+
+        function update(now) {
+            if (state.phase === 'idle') return;
+
+            const elapsed = now - state.spinStartTime;
+
+            // === 加速阶段 ===
+            if (state.phase === 'accelerating') {
+                const t = Math.min(1, elapsed / state.accelDuration);
+                // 使用 ease-in-out 缓动: smoothstep
+                const eased = t * t * (3 - 2 * t);
+
+                if (state.outerSpinning) {
+                    state.outerVelocity = state.outerTargetVel * eased;
+                    state.outerAngle += state.outerVelocity;
+                }
+                if (state.innerSpinning) {
+                    state.innerVelocity = state.innerTargetVel * eased;
+                    state.innerAngle += state.innerVelocity;
+                }
+
+                // 球跟随拖拽
+                updateBallDrag();
+
+                if (t >= 1) {
+                    state.phase = 'cruising';
+                }
+
+                // 更新提示
+                updateHintBar();
+                return;
+            }
+
+            // === 匀速巡航阶段 ===
+            if (state.phase === 'cruising') {
+                if (state.outerSpinning) state.outerAngle += state.outerVelocity;
+                if (state.innerSpinning) state.innerAngle += state.innerVelocity;
+
+                updateBallDrag();
+
+                // 自动停止检查（10秒）
+                if (elapsed >= state.autoStopTime) {
+                    beginDeceleration();
+                }
+
+                updateHintBar();
+                return;
+            }
+
+            // === 减速阶段 ===
+            if (state.phase === 'decelerating') {
+                const friction = 0.985;
+                state.outerVelocity *= friction;
+                state.innerVelocity *= friction;
+                if (state.outerSpinning) state.outerAngle += state.outerVelocity;
+                if (state.innerSpinning) state.innerAngle += state.innerVelocity;
+
+                updateBallDrag();
+
+                const outerSpeed = Math.abs(state.outerVelocity);
+                const innerSpeed = Math.abs(state.innerVelocity);
+
+                // ── 减速末段：引导球朝向预定结果 ───────────────────────────
+                // 当盘速慢下来时，引导球朝向 beginDeceleration 中锁定的目标格子
+                if (outerSpeed < 5.0 && state.finalShengmuIdx !== undefined) {
+                    const _od = 360 / yunmu.length;
+                    const _id = 360 / shengmu.length;
+                    const _on = ((state.outerBallOffset % 360) + 360) % 360;
+                    const _in = ((state.innerBallOffset % 360) + 360) % 360;
+
+                    let _oT = state.finalYunmuIdx * _od + _od * 0.5; // 居中
+                    let _iT = state.finalShengmuIdx * _id + _id * 0.5; // 居中
+
+                    // 短路修正
+                    if (_oT - _on > 180) _oT -= 360; if (_oT - _on < -180) _oT += 360;
+                    if (_iT - _in > 180) _iT -= 360; if (_iT - _in < -180) _iT += 360;
+
+                    // 引导力随速度变慢而增强
+                    const nudgeStrength = 0.015;
+                    state.outerBallOffset = _on + (_oT - _on) * nudgeStrength;
+                    state.innerBallOffset = _in + (_iT - _in) * nudgeStrength;
+                }
+
+                if (outerSpeed < 0.10 && innerSpeed < 0.10) {
+                    state.outerVelocity = 0;
+                    state.innerVelocity = 0;
+                    state.phase = 'settling';
+                    state.settleTimer = 60; // 约1秒
+
+                    // 结果已在 beginDeceleration 时锁定，只需设置 lerp 终点
+                    const _od = 360 / yunmu.length;
+                    const _id = 360 / shengmu.length;
+                    const _on = ((state.outerBallOffset % 360) + 360) % 360;
+                    const _in = ((state.innerBallOffset % 360) + 360) % 360;
+
+                    state.outerBallOffset = _on;
+                    state.innerBallOffset = _in;
+                    let outerTarget = state.finalYunmuIdx * _od + _od * 0.5;
+                    let innerTarget = state.finalShengmuIdx * _id + _id * 0.5;
+                    // 再次确保短路路径
+                    if (outerTarget - _on > 180) outerTarget -= 360;
+                    if (outerTarget - _on < -180) outerTarget += 360;
+                    if (innerTarget - _in > 180) innerTarget -= 360;
+                    if (innerTarget - _in < -180) innerTarget += 360;
+                    state.outerSettleTarget = outerTarget;
+                    state.innerSettleTarget = innerTarget;
+                }
+
+                updateHintBar();
+                return;
+            }
+
+            // === settling 阶段：球逐渐向格子中心对齐 + 继续向外滑行 ===
+            if (state.phase === 'settling') {
+                const lerpK = 0.06;
+                const slopeForce = 0.05;
+
+                // ====== 外圈球 ======
+                if (state.lockedYunmuIdx !== null) {
+                    const _od = 360 / yunmu.length;
+                    state.outerBallOffset = state.lockedYunmuIdx * _od + _od * 0.5;
+                    state.outerBallRadialOffset = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
+                    state.outerBallRadialVel = 0;
+                } else {
+                    state.outerBallOffset += (state.outerSettleTarget - state.outerBallOffset) * lerpK;
+                    state.outerBallRadialVel += 0.25 * slopeForce;
+                    state.outerBallRadialOffset += state.outerBallRadialVel;
+                    state.outerBallRadialVel *= 0.92;
+
+                    const maxRO = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
+                    if (state.outerBallRadialOffset > maxRO) {
+                        state.outerBallRadialOffset = maxRO;
+                        state.outerBallRadialVel = -Math.abs(state.outerBallRadialVel) * 0.2;
+                    }
+                }
+
+                // ====== 内圈球 ======
+                if (state.lockedShengmuIdx !== null) {
+                    const _id = 360 / shengmu.length;
+                    state.innerBallOffset = state.lockedShengmuIdx * _id + _id * 0.5;
+                    state.innerBallRadialOffset = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
+                    state.innerBallRadialVel = 0;
+                } else {
+                    state.innerBallOffset += (state.innerSettleTarget - state.innerBallOffset) * lerpK;
+                    state.innerBallRadialVel += 0.20 * slopeForce;
+                    state.innerBallRadialOffset += state.innerBallRadialVel;
+                    state.innerBallRadialVel *= 0.92;
+
+                    const maxRI = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
+                    if (state.innerBallRadialOffset > maxRI) {
+                        state.innerBallRadialOffset = maxRI;
+                        state.innerBallRadialVel = -Math.abs(state.innerBallRadialVel) * 0.2;
+                    }
+                }
+
+                state.settleTimer--;
+                if (state.settleTimer <= 0) {
+                    state.phase = 'idle';
+                    onSpinComplete();
+                }
+            }
+        }
+
+        // 确保球中心在格子内部（停止后调用）
+        function pushBallsAwayFromBoundaries() {
+            const outerDeg = 360 / yunmu.length;    // ≈0 10度
+            const innerDeg = 360 / shengmu.length;  // ≈0 15.65度
+
+            // 永远把球心放在靠近格子边缘的位置 (顺时针外圈 12%，逆时针内圈 88%)
+            function centerInSector(offset, deg, frac) {
+                const sector = Math.floor(offset / deg);
+                const noise = (Math.random() - 0.5) * 0.04; // 增加微小随机性
+                const newOffset = sector * deg + (frac + noise) * deg;
+                return ((newOffset % 360) + 360) % 360;
+            }
+
+            state.outerBallOffset = centerInSector(state.outerBallOffset, outerDeg, 0.5);
+            state.innerBallOffset = centerInSector(state.innerBallOffset, innerDeg, 0.5);
+        }
+
+        // 球跟随盘子的拖拽物理
+        function updateBallDrag() {
+            const ballFriction = 0.990;
+            const outerTrackHalf = (OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R;
+            const innerTrackHalf = (INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R;
+
+            // 坡度重力参数 (模拟内高外低)
+            const outerSlopeGravity = 0.25;
+            const innerSlopeGravity = 0.20;
+
+            // ====== 外圈球 ======
+            if (state.lockedYunmuIdx !== null) {
+                const _od = 360 / yunmu.length;
+                state.outerBallOffset = state.lockedYunmuIdx * _od + _od * 0.5;
+                state.outerBallVelocity = 0;
+                state.outerBallRadialVel = 0;
+                state.outerBallRadialOffset = outerTrackHalf * 0.98;
+            } else {
+                const outerDrag = (state.outerVelocity - state.outerBallVelocity) * 0.05;
+                state.outerBallVelocity += outerDrag;
+                state.outerBallVelocity *= ballFriction;
+                const outerRelVel = state.outerBallVelocity - state.outerVelocity;
+                state.outerBallOffset += outerRelVel;
+
+                const outerCentrifugal = state.outerVelocity * state.outerVelocity * 0.008;
+                state.outerBallRadialVel += (outerCentrifugal + outerSlopeGravity) * 0.05;
+
+                if (Math.abs(state.outerVelocity) > 0.5) {
+                    state.outerBallRadialVel += (Math.random() - 0.5) * 0.25;
+                    state.outerBallVelocity += (Math.random() - 0.5) * 0.08;
+                }
+
+                const outerDegPerSector = 360 / yunmu.length;
+                const outerBallLocalAngle = ((state.outerBallOffset % 360) + 360) % 360;
+                const currentOuterSector = Math.floor(outerBallLocalAngle / outerDegPerSector);
+                if (lastOuterSector >= 0 && currentOuterSector !== lastOuterSector) {
+                    const speed = Math.abs(state.outerVelocity);
+                    const intensity = Math.min(1, speed / 6);
+                    const dir = Math.random() < 0.6 ? 1 : -1;
+                    state.outerBallRadialVel += intensity * (3.5 + Math.random() * 4) * dir;
+                    state.outerBallVelocity += (Math.random() - 0.5) * intensity * 1.5;
+                    if (speed > 0.6) playBounce(intensity * 0.45);
+                }
+                lastOuterSector = currentOuterSector;
+
+                state.outerBallRadialOffset += state.outerBallRadialVel;
+                state.outerBallRadialVel *= 0.96;
+
+                const maxRO = outerTrackHalf * 0.98;
+                if (state.outerBallRadialOffset > maxRO) {
+                    state.outerBallRadialOffset = maxRO;
+                    state.outerBallRadialVel = -Math.abs(state.outerBallRadialVel) * 0.2;
+                    if (Math.abs(state.outerBallRadialVel) > 0.3) playBounce(0.12);
+                } else if (state.outerBallRadialOffset < -maxRO) {
+                    state.outerBallRadialOffset = -maxRO;
+                    state.outerBallRadialVel = Math.abs(state.outerBallRadialVel) * 0.5;
+                    if (Math.abs(state.outerBallRadialVel) > 0.3) playBounce(0.2);
+                }
+            }
+
+            // ====== 内圈球 ======
+            if (state.lockedShengmuIdx !== null) {
+                const _id = 360 / shengmu.length;
+                state.innerBallOffset = state.lockedShengmuIdx * _id + _id * 0.5;
+                state.innerBallVelocity = 0;
+                state.innerBallRadialVel = 0;
+                state.innerBallRadialOffset = innerTrackHalf * 0.98;
+            } else {
+                const innerDrag = (state.innerVelocity - state.innerBallVelocity) * 0.04;
+                state.innerBallVelocity += innerDrag;
+                state.innerBallVelocity *= ballFriction;
+                const innerRelVel = state.innerBallVelocity - state.innerVelocity;
+                state.innerBallOffset += innerRelVel;
+
+                const innerCentrifugal = state.innerVelocity * state.innerVelocity * 0.006;
+                state.innerBallRadialVel += (innerCentrifugal + innerSlopeGravity) * 0.05;
+
+                if (Math.abs(state.innerVelocity) > 0.5) {
+                    state.innerBallRadialVel += (Math.random() - 0.5) * 0.20;
+                    state.innerBallVelocity += (Math.random() - 0.5) * 0.06;
+                }
+
+                const innerDegPerSector = 360 / shengmu.length;
+                const innerBallLocalAngle = ((state.innerBallOffset % 360) + 360) % 360;
+                const currentInnerSector = Math.floor(innerBallLocalAngle / innerDegPerSector);
+                if (lastInnerSector >= 0 && currentInnerSector !== lastInnerSector) {
+                    const speed = Math.abs(state.innerVelocity);
+                    const intensity = Math.min(1, speed / 6);
+                    const biasOut = speed > 3 ? 0.7 : 0.5;
+                    const dir = Math.random() < biasOut ? 1 : -1;
+                    state.innerBallRadialVel += intensity * (3 + Math.random() * 3.5) * dir;
+                    state.innerBallVelocity += (Math.random() - 0.5) * intensity * 1.2;
+                    if (speed > 0.6) playBounce(intensity * 0.45);
+                }
+                lastInnerSector = currentInnerSector;
+
+                state.innerBallRadialOffset += state.innerBallRadialVel;
+                state.innerBallRadialVel *= 0.96;
+
+                const maxRI = innerTrackHalf * 0.98;
+                if (state.innerBallRadialOffset > maxRI) {
+                    state.innerBallRadialOffset = maxRI;
+                    state.innerBallRadialVel = -Math.abs(state.innerBallRadialVel) * 0.2;
+                    if (Math.abs(state.innerBallRadialVel) > 0.3) playBounce(0.12);
+                } else if (state.innerBallRadialOffset < -maxRI) {
+                    state.innerBallRadialOffset = -maxRI;
+                    state.innerBallRadialVel = Math.abs(state.innerBallRadialVel) * 0.5;
+                    if (Math.abs(state.innerBallRadialVel) > 0.3) playBounce(0.2);
+                }
+            }
+
+            state.outerBallOffset = ((state.outerBallOffset % 360) + 360) % 360;
+            state.innerBallOffset = ((state.innerBallOffset % 360) + 360) % 360;
+        }
+
+        // 最终对齐球到目标扇区（角度方向），保留径向自然位置
+        function snapBallToTarget() {
+            if (state.targetPinyin === null) return;
+
+            const { shengmuIdx, yunmuIdx } = state.targetPinyin;
+
+            // 外圈球对齐到目标韵母扇区 — 顺时针，靠后边缘 (12%)
+            const outerDeg = 360 / yunmu.length;
+            const targetOuterAngle = yunmuIdx * outerDeg + outerDeg * (0.5 + (Math.random() - 0.5) * 0.04);
+            state.outerBallOffset = targetOuterAngle - state.outerAngle;
+
+            // 内圈球对齐到目标声母扇区 — 居中 (0.5)
+            const innerDeg = 360 / shengmu.length;
+            const targetInnerAngle = shengmuIdx * innerDeg + innerDeg * (0.5 + (Math.random() - 0.5) * 0.04);
+            state.innerBallOffset = targetInnerAngle - state.innerAngle;
+
+            // 径向位置：停止时由于“内高外低”，强制滚到外侧
+            const outerTrackHalf = (OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R;
+            const innerTrackHalf = (INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R;
+            state.outerBallRadialOffset = outerTrackHalf * 0.98;
+            state.innerBallRadialOffset = innerTrackHalf * 0.98;
+        }
+
+        // ==================== 游戏逻辑 ====================
+
+        function startSpin() {
+            if (state.phase !== 'idle') return;
+
+            // 隐藏音调面板
+            document.getElementById('tonesPanel').classList.remove('show');
+
+            playStartSound();
+            state.phase = 'accelerating';
+            state.spinStartTime = performance.now();
+
+            // 设置速度和旋转标志
+            state.outerVelocity = 0;
+            state.innerVelocity = 0;
+            state.outerSpinning = state.lockedYunmuIdx === null;
+            state.innerSpinning = state.lockedShengmuIdx === null;
+
+            // 如果某圈被锁定，目标最大速度为0
+            state.outerTargetVel = state.outerSpinning ? (5 + Math.random() * 4) : 0;
+            state.innerTargetVel = state.innerSpinning ? -(6 + Math.random() * 5) : 0;
+
+            state.outerBallVelocity = 0;
+            state.innerBallVelocity = 0;
+            state.outerBallRadialVel = 0;
+            state.innerBallRadialVel = 0;
+
+            lastOuterSector = -1;
+            lastInnerSector = -1;
+
+            // 重置目标
+            state.targetOuterAngle = null;
+            state.targetInnerAngle = null;
+            state.targetPinyin = null;
+
+            // 隐藏结果
+            document.getElementById('resultPinyin').classList.remove('show');
+            
+            // 物理归位：如果锁定了某圈，强制将球的位置同步到该索引
+            if (state.lockedYunmuIdx !== null) {
+                const _od = 360 / yunmu.length;
+                state.outerBallOffset = state.lockedYunmuIdx * _od + _od * 0.5;
+                state.outerBallRadialOffset = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
+            }
+            if (state.lockedShengmuIdx !== null) {
+                const _id = 360 / shengmu.length;
+                state.innerBallOffset = state.lockedShengmuIdx * _id + _id * 0.5;
+                state.innerBallRadialOffset = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
+            }
+
+            updateHintBar();
+        }
+
+        function beginDeceleration() {
+            if (state.phase !== 'cruising' && state.phase !== 'accelerating') return;
+
+            state.phase = 'decelerating';
+
+            // ── 立即锁定并预测最终结果 ──────────────────────────────────────────
+            const _od = 360 / yunmu.length;
+            const _id = 360 / shengmu.length;
+            const _on = ((state.outerBallOffset % 360) + 360) % 360;
+            const _in = ((state.innerBallOffset % 360) + 360) % 360;
+
+            // 1. 获取物理位置对应的索引
+            let _fsi = Math.floor(_in / _id);
+            _fsi = ((_fsi % shengmu.length) + shengmu.length) % shengmu.length;
+            let _fyi = Math.floor(_on / _od);
+            _fyi = ((_fyi % yunmu.length) + yunmu.length) % yunmu.length;
+
+            // 2. 尊重锁定（最高优先级，直接覆盖物理推导）
+            if (state.lockedShengmuIdx !== null) _fsi = state.lockedShengmuIdx;
+            if (state.lockedYunmuIdx !== null) _fyi = state.lockedYunmuIdx;
+
+            // 3. 寻找最近的合法组合
+            // 如果两个都锁定了，我们就无需寻找，直接显示结果（即便不合法）
+            const bothLocked = (state.lockedShengmuIdx !== null && state.lockedYunmuIdx !== null);
+            const _valid = validPinyinMap[_fsi] && validPinyinMap[_fsi].includes(_fyi);
+
+            if (!_valid && !bothLocked) {
+                let _bestDist = Infinity;
+                let _bestSi = _fsi;
+                let _bestYi = _fyi;
+
+                if (state.lockedYunmuIdx !== null) {
+                    // 韵母锁定：只需寻找离当前声母物理位置最近的有效声母
+                    for (const [siStr, opts] of Object.entries(validPinyinMap)) {
+                        if (opts.includes(state.lockedYunmuIdx)) {
+                            const si = parseInt(siStr);
+                            const ic = si * _id + _id * 0.5;
+                            let di = Math.abs(_in - ic); if (di > 180) di = 360 - di;
+                            if (di < _bestDist) { _bestDist = di; _bestSi = si; }
+                        }
+                    }
+                } else if (state.lockedShengmuIdx !== null) {
+                    // 声母锁定：只需寻找离当前韵母物理位置最近的有效韵母
+                    const opts = validPinyinMap[state.lockedShengmuIdx] || [];
+                    for (const yi of opts) {
+                        const oc = yi * _od + _od * 0.5;
+                        let dO = Math.abs(_on - oc); if (dO > 180) dO = 360 - dO;
+                        if (dO < _bestDist) { _bestDist = dO; _bestYi = yi; }
+                    }
+                } else {
+                    // 均未锁定：寻找最近的整体有效组合
+                    for (const [siStr, opts] of Object.entries(validPinyinMap)) {
+                        const si = parseInt(siStr);
+                        const ic = si * _id + _id * 0.5;
+                        let di = Math.abs(_in - ic); if (di > 180) di = 360 - di;
+                        for (const yi of opts) {
+                            const oc = yi * _od + _od * 0.5;
+                            let dO = Math.abs(_on - oc); if (dO > 180) dO = 360 - dO;
+                            if (di + dO < _bestDist) { _bestDist = di + dO; _bestSi = si; _bestYi = yi; }
+                        }
+                    }
+                }
+                
+                // 应用找到的最优解
+                _fsi = _bestSi;
+                _fyi = _bestYi;
+            }
+
+            // 安全检查
+            _fsi = Math.max(0, Math.min(shengmu.length - 1, Math.floor(Number(_fsi) || 0)));
+            _fyi = Math.max(0, Math.min(yunmu.length - 1, Math.floor(Number(_fyi) || 0)));
+
+            // 4. 最终强制同步（多重保险）：如果有锁定，结算索引必须等于锁定索引
+            if (state.lockedShengmuIdx !== null) _fsi = state.lockedShengmuIdx;
+            if (state.lockedYunmuIdx !== null) _fyi = state.lockedYunmuIdx;
+
+            state.finalShengmuIdx = _fsi;
+            state.finalYunmuIdx = _fyi;
+
+            // 立即以红色显示预测结果
+            const s = shengmu[state.finalShengmuIdx] || '';
+            const y = yunmu[state.finalYunmuIdx] || '';
+            let pinyin = s + y;
+            if (s && (s === 'j' || s === 'q' || s === 'x' || s === 'y')) {
+                if (y.startsWith('ü')) pinyin = s + 'u' + y.slice(1);
+            }
+            const resultEl = document.getElementById('resultPinyin');
+            resultEl.textContent = pinyin || '--';
+            resultEl.style.color = '#FF4D4D'; // 红色表示已锁定，正在减速
+
+            updateHintBar();
+        }
+
+        function updateHintBar() {
+            const hint = document.getElementById('hintBar');
+            if (state.phase === 'accelerating' || state.phase === 'cruising') {
+                hint.textContent = '再按 空格键 停止';
+                hint.style.animation = 'none';
+                hint.style.opacity = '0.6';
+            } else if (state.phase === 'decelerating' || state.phase === 'settling') {
+                hint.textContent = '正在停止...';
+                hint.style.animation = 'none';
+                hint.style.opacity = '0.4';
+            } else {
+                hint.textContent = '按 空格键 旋转轮盘';
+                hint.style.animation = 'pulse 2s ease-in-out infinite';
+                hint.style.opacity = '';
+            }
+        }
+
+        function onSpinComplete() {
+            playStopSound();
+
+            // 结果强制校准：如果锁定了，结果必须是锁定的那个
+            if (state.lockedShengmuIdx !== null) state.finalShengmuIdx = state.lockedShengmuIdx;
+            if (state.lockedYunmuIdx !== null) state.finalYunmuIdx = state.lockedYunmuIdx;
+
+            const s = shengmu[state.finalShengmuIdx] || '';
+            const y = yunmu[state.finalYunmuIdx] || '';
+            let pinyin = s + y;
+            // j/q/x/y + ü 系韵母 → 标准拼音写法（省略两点）
+            if (s && (s === 'j' || s === 'q' || s === 'x' || s === 'y')) {
+                if (y.startsWith('ü')) pinyin = s + 'u' + y.slice(1);
+            }
+
+            const resultEl = document.getElementById('resultPinyin');
+            // textContent 已在 settling 开始时设置，这里只需变色
+            resultEl.style.color = '#FFD700'; // 金色表示最终确认结果
+            resultEl.classList.add('show');
+            playWinSound();
+
+            updateHintBar();
+        }
+
+        // ==================== 主循环 ====================
+        function gameLoop(timestamp) {
+            update(timestamp);
+            draw();
+            animFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // ==================== 事件 ====================
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (state.phase === 'idle') {
+                    startSpin();
+                } else if (state.phase === 'accelerating' || state.phase === 'cruising') {
+                    beginDeceleration();
+                }
+            } else if (e.code === 'Enter') {
+                if (state.phase === 'idle') {
+                    showTonesPanel();
+                }
+            }
+        });
+
+        function showTonesPanel() {
+            const s = shengmu[state.finalShengmuIdx] || '';
+            const y = yunmu[state.finalYunmuIdx] || '';
+            let base = s + y;
+
+            // 处理拼音缩写规则：j/q/x/y 后的 ü 系韵母省略两点
+            if (s && (s === 'j' || s === 'q' || s === 'x' || s === 'y')) {
+                if (y.startsWith('ü')) {
+                    base = s + 'u' + y.slice(1);
+                }
+            }
+
+            const panel = document.getElementById('tonesPanel');
+            const list = document.getElementById('tonesList');
+            const title = document.getElementById('panelTitle');
+
+            title.textContent = `拼音 ${base} 的音调`;
+            list.innerHTML = '';
+
+            const options = commonWords[base] || [];
+            for (let i = 0; i < 4; i++) {
+                const toned = markPinyin(base, i + 1);
+                const char = options[i] || '--';
+
+                const item = document.createElement('div');
+                item.className = 'tone-item';
+                item.innerHTML = `
+                    <span class="toned-pinyin">${toned}</span>
+                    <span class="sample-char">${char}</span>
+                `;
+
+                item.onclick = () => {
+                    speak(char !== '--' ? char : toned);
+                };
+                list.appendChild(item);
+            }
+
+            panel.classList.add('show');
+        }
+
+        function speak(text) {
+            if (!window.speechSynthesis) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-CN';
+            utterance.rate = 0.8;
+            speechSynthesis.speak(utterance);
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (state.phase === 'idle') {
+                // 点击以锁定/解锁
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = (e.clientX - rect.left) * (CANVAS_CSS_SIZE / rect.width);
+                const mouseY = (e.clientY - rect.top) * (CANVAS_CSS_SIZE / rect.height);
+
+                const dx = mouseX - CX;
+                const dy = mouseY - CY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // 计算点击的角度 (0-360)
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                angle = (angle + 360) % 360;
+
+                // 判断点击的是哪一圈
+                if (dist >= OUTER_INNER_R && dist <= OUTER_R) {
+                    // 外圈 (韵母)
+                    const localAngle = (angle - state.outerAngle + 360) % 360;
+                    const yunmuDeg = 360 / yunmu.length;
+                    const idx = Math.min(yunmu.length - 1, Math.floor(localAngle / yunmuDeg));
+
+                    if (state.lockedYunmuIdx === idx) {
+                        state.lockedYunmuIdx = null;
+                    } else {
+                        state.lockedYunmuIdx = idx;
+                        state.lockedShengmuIdx = null; // 互斥锁定
+                        
+                        // 立即视觉同步：锁定即居中
+                        state.outerBallOffset = idx * yunmuDeg + yunmuDeg * 0.5;
+                        state.outerBallRadialOffset = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
+                        state.outerBallVelocity = 0;
+                        state.outerBallRadialVel = 0;
+                    }
+                    playTick(600, 0.1, 0.05);
+                } else if (dist >= INNER_INNER_R && dist <= INNER_R) {
+                    // 内圈 (声母)
+                    const localAngle = (angle - state.innerAngle + 360) % 360;
+                    const shengmuDeg = 360 / shengmu.length;
+                    const idx = Math.min(shengmu.length - 1, Math.floor(localAngle / shengmuDeg));
+
+                    if (state.lockedShengmuIdx === idx) {
+                        state.lockedShengmuIdx = null;
+                    } else {
+                        state.lockedShengmuIdx = idx;
+                        state.lockedYunmuIdx = null; // 互斥锁定
+                        
+                        // 立即视觉同步：锁定即居中
+                        state.innerBallOffset = idx * shengmuDeg + shengmuDeg * 0.5;
+                        state.innerBallRadialOffset = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
+                        state.innerBallVelocity = 0;
+                        state.innerBallRadialVel = 0;
+                    }
+                    playTick(800, 0.1, 0.05);
+                } else {
+                    // 点击中心区域或空白区域，开始旋转
+                    startSpin();
+                }
+            } else if (state.phase === 'accelerating' || state.phase === 'cruising') {
+                beginDeceleration();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            location.reload();
+        });
+
+        // ==================== 初始化 ====================
+        // 球加载到随机格子的内部（20%-80%底部），不落在边界线上
+        (function initBalls() {
+            const outerDeg = 360 / yunmu.length;
+            const innerDeg = 360 / shengmu.length;
+            // 外圈球：随机选一个韵母格，球心在格内的中心 (0.5)
+            const outerSector = Math.floor(Math.random() * yunmu.length);
+            state.outerBallOffset = (outerSector + 0.5 + (Math.random() - 0.5) * 0.04) * outerDeg;
+            // 内圈球：随机选一个声母格，球心在格内的中心 (0.5)
+            const innerSector = Math.floor(Math.random() * shengmu.length);
+            state.innerBallOffset = (innerSector + 0.5 + (Math.random() - 0.5) * 0.04) * innerDeg;
+
+            // 径向位置：默认滚向外侧
+            const initOuterTrackHalf = (OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R;
+            const initInnerTrackHalf = (INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R;
+            state.outerBallRadialOffset = initOuterTrackHalf * 0.98;
+            state.innerBallRadialOffset = initInnerTrackHalf * 0.98;
+        })()
+        animFrameId = requestAnimationFrame(gameLoop);
+    </script>
+</body>
+
+</html>

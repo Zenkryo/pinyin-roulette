@@ -383,7 +383,12 @@
 
             // 锁定功能
             lockedShengmuIdx: null,
-            lockedYunmuIdx: null
+            lockedYunmuIdx: null,
+            // 左右键平滑导航目标（null = 无导航中）
+            navigatingOuterTarget: null,
+            navigatingOuterDir: 0, // 1=顺时针, -1=逆时针, 0=无方向
+            navigatingInnerTarget: null,
+            navigatingInnerDir: 0
         };
 
         let animFrameId = null;
@@ -884,7 +889,15 @@
         // ==================== 物理更新 ====================
 
         function update(now) {
-            if (state.phase === 'idle') return;
+            // idle 阶段：有导航目标时继续更新球的 lerp 动画
+            if (state.phase === 'idle') {
+                const hasNav = state.navigatingOuterTarget !== null || state.navigatingInnerTarget !== null;
+                if (hasNav) {
+                    console.log('[update] idle 阶段，调用 updateBallDrag，outerTarget:', state.navigatingOuterTarget, 'innerTarget:', state.navigatingInnerTarget);
+                    updateBallDrag();
+                }
+                return;
+            }
 
             const elapsed = now - state.spinStartTime;
 
@@ -1064,6 +1077,17 @@
 
         // 球跟随盘子的拖拽物理
         function updateBallDrag() {
+            // 调试日志：每次调用都打印关键状态
+            const outerDeg = 360 / yunmu.length;
+            const innerDeg = 360 / shengmu.length;
+            console.log('[updateBallDrag] phase:', state.phase,
+                '| outerOffset:', state.outerBallOffset.toFixed(2),
+                '| innerOffset:', state.innerBallOffset.toFixed(2),
+                '| lockedSm:', state.lockedShengmuIdx, '| lockedYm:', state.lockedYunmuIdx,
+                '| navOuter:', state.navigatingOuterTarget, '| navInner:', state.navigatingInnerTarget,
+                '| outerSector:', Math.floor(((state.outerBallOffset % 360) + 360) % 360 / outerDeg),
+                '| innerSector:', Math.floor(((state.innerBallOffset % 360) + 360) % 360 / innerDeg));
+
             const ballFriction = 0.990;
             const outerTrackHalf = (OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R;
             const innerTrackHalf = (INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R;
@@ -1073,7 +1097,37 @@
             const innerSlopeGravity = 0.20;
 
             // ====== 外圈球 ======
-            if (state.lockedYunmuIdx !== null) {
+            if (state.navigatingOuterTarget !== null) {
+                // 左右键导航：平滑 lerp 向目标扇区，方向跟随用户按的方向
+                const lerpK = 0.18;
+                const oldOffset = state.outerBallOffset;
+                // 计算差值，方向跟随用户按的方向（1=顺时针, -1=逆时针）
+                let diff = state.navigatingOuterTarget - state.outerBallOffset;
+                // 标准化到 (-360, 360)
+                while (diff > 180) diff -= 360;
+                while (diff <= -180) diff += 360;
+                // 如果差值方向与用户按的方向相反，说明需要绕圈，添加 360°
+                if (state.navigatingOuterDir > 0 && diff < 0) diff += 360; // 顺时针但差值为负 → 绕正方向
+                if (state.navigatingOuterDir < 0 && diff > 0) diff -= 360; // 逆时针但差值为正 → 绕负方向
+                state.outerBallOffset += diff * lerpK;
+                if (Math.abs(diff) < 0.15) {
+                    state.outerBallOffset = state.navigatingOuterTarget;
+                    state.navigatingOuterTarget = null;
+                    state.navigatingOuterDir = 0;
+                    console.log('[updateBallDrag] 外圈到达目标，停止');
+                    // 到达目标后更新拼音并刷新面板
+                    updateCurrentPinyinFromBalls(true);
+                } else {
+                    // 动画过程中只更新拼音，不刷新面板
+                    updateCurrentPinyinFromBalls(false);
+                }
+                state.outerBallVelocity = 0;
+                state.outerBallRadialVel = 0;
+                state.outerBallRadialOffset = outerTrackHalf * 0.98;
+                if (Math.floor(oldOffset / outerDeg) !== Math.floor(state.outerBallOffset / outerDeg)) {
+                    console.log('[updateBallDrag] 外圈球滑动，old:', oldOffset.toFixed(2), 'new:', state.outerBallOffset.toFixed(2), 'target:', state.navigatingOuterTarget);
+                }
+            } else if (state.lockedYunmuIdx !== null) {
                 const _od = 360 / yunmu.length;
                 state.outerBallOffset = state.lockedYunmuIdx * _od + _od * 0.5;
                 state.outerBallVelocity = 0;
@@ -1123,7 +1177,36 @@
             }
 
             // ====== 内圈球 ======
-            if (state.lockedShengmuIdx !== null) {
+            if (state.navigatingInnerTarget !== null) {
+                const lerpK = 0.18;
+                const oldOffset = state.innerBallOffset;
+                // 计算差值，方向跟随用户按的方向（1=顺时针, -1=逆时针）
+                let diff = state.navigatingInnerTarget - state.innerBallOffset;
+                // 标准化到 (-360, 360)
+                while (diff > 180) diff -= 360;
+                while (diff <= -180) diff += 360;
+                // 如果差值方向与用户按的方向相反，说明需要绕圈，添加 360°
+                if (state.navigatingInnerDir > 0 && diff < 0) diff += 360; // 顺时针但差值为负 → 绕正方向
+                if (state.navigatingInnerDir < 0 && diff > 0) diff -= 360; // 逆时针但差值为正 → 绕负方向
+                state.innerBallOffset += diff * lerpK;
+                if (Math.abs(diff) < 0.15) {
+                    state.innerBallOffset = state.navigatingInnerTarget;
+                    state.navigatingInnerTarget = null;
+                    state.navigatingInnerDir = 0;
+                    console.log('[updateBallDrag] 内圈到达目标，停止');
+                    // 到达目标后更新拼音并刷新面板
+                    updateCurrentPinyinFromBalls(true);
+                } else {
+                    // 动画过程中只更新拼音，不刷新面板
+                    updateCurrentPinyinFromBalls(false);
+                }
+                state.innerBallVelocity = 0;
+                state.innerBallRadialVel = 0;
+                state.innerBallRadialOffset = innerTrackHalf * 0.98;
+                if (Math.floor(oldOffset / innerDeg) !== Math.floor(state.innerBallOffset / innerDeg)) {
+                    console.log('[updateBallDrag] 内圈球滑动，old:', oldOffset.toFixed(2), 'new:', state.innerBallOffset.toFixed(2), 'target:', state.navigatingInnerTarget);
+                }
+            } else if (state.lockedShengmuIdx !== null) {
                 const _id = 360 / shengmu.length;
                 state.innerBallOffset = state.lockedShengmuIdx * _id + _id * 0.5;
                 state.innerBallVelocity = 0;
@@ -1204,6 +1287,12 @@
 
         function startSpin() {
             if (state.phase !== 'idle') return;
+
+            // 清除左右键导航状态
+            state.navigatingOuterTarget = null;
+            state.navigatingOuterDir = 0;
+            state.navigatingInnerTarget = null;
+            state.navigatingInnerDir = 0;
 
             // 隐藏音调面板
             document.getElementById('tonesPanel').classList.remove('show');
@@ -1357,7 +1446,7 @@
                 hint.style.animation = 'none';
                 hint.style.opacity = '0.4';
             } else {
-                hint.textContent = '按 空格键 旋转轮盘';
+                hint.textContent = '按 空格键 旋转轮盘 | 回车键 查看音调';
                 hint.style.animation = 'pulse 2s ease-in-out infinite';
                 hint.style.opacity = '';
             }
@@ -1389,6 +1478,11 @@
 
         // ==================== 主循环 ====================
         function gameLoop(timestamp) {
+            const loopCount = (gameLoop._count = (gameLoop._count || 0) + 1);
+            if (loopCount <= 3) {
+                console.log('[gameLoop] frame', loopCount, 'phase:', state.phase,
+                    'navOuter:', state.navigatingOuterTarget, 'navInner:', state.navigatingInnerTarget);
+            }
             update(timestamp);
             draw();
             animFrameId = requestAnimationFrame(gameLoop);
@@ -1405,17 +1499,182 @@
                 }
             } else if (e.code === 'Enter') {
                 if (state.phase === 'idle') {
-                    showTonesPanel();
+                    if (updateCurrentPinyinFromBalls()) {
+                        showTonesPanel();
+                    }
+                }
+            } else if (e.code === 'Escape') {
+                // ESC 键关闭音调面板
+                const tonesPanel = document.getElementById('tonesPanel');
+                if (tonesPanel.classList.contains('show')) {
+                    tonesPanel.classList.remove('show');
+                }
+            } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                e.preventDefault();
+                if (state.phase === 'idle') {
+                    console.log('=== Arrow key pressed ===');
+                    console.log('phase:', state.phase);
+                    console.log('lockedShengmuIdx:', state.lockedShengmuIdx);
+                    console.log('lockedYunmuIdx:', state.lockedYunmuIdx);
+                    console.log('innerBallOffset:', state.innerBallOffset);
+                    console.log('outerBallOffset:', state.outerBallOffset);
+                    console.log('navigatingOuterTarget:', state.navigatingOuterTarget);
+                    console.log('navigatingInnerTarget:', state.navigatingInnerTarget);
+                    const dir = e.code === 'ArrowRight' ? 1 : -1;
+                    navigateBall(dir);
                 }
             }
         });
 
-        function showTonesPanel() {
+        // 跟踪每个带调拼音已显示过的字符索引，全部显示完则重置
+        const shownCharsMap = new Map();
+
+        // 根据当前球位置（及锁定状态）计算拼音并显示，返回是否有效
+        // updatePanel: 是否同步更新右侧音调面板（动画 lerp 过程中传 false）
+        function updateCurrentPinyinFromBalls(updatePanel = true) {
+            const outerDeg = 360 / yunmu.length;
+            const innerDeg = 360 / shengmu.length;
+
+            // 从球的 offset 计算所在扇区索引
+            let si = Math.floor(state.innerBallOffset / innerDeg);
+            let yi = Math.floor(state.outerBallOffset / outerDeg);
+            si = Math.max(0, Math.min(shengmu.length - 1, si));
+            yi = Math.max(0, Math.min(yunmu.length - 1, yi));
+
+            // 若有锁定，优先使用锁定值
+            if (state.lockedShengmuIdx !== null) si = state.lockedShengmuIdx;
+            if (state.lockedYunmuIdx !== null) yi = state.lockedYunmuIdx;
+
+            const s = shengmu[si] || '';
+            const y = yunmu[yi] || '';
+            const key = s + y;
+
+            const resultEl = document.getElementById('resultPinyin');
+            if (validPinyinSet.has(key)) {
+                state.finalShengmuIdx = si;
+                state.finalYunmuIdx = yi;
+                let pinyin = s + y;
+                // j/q/x/y + ü 系韵母 → 标准拼音写法（省略两点）
+                if (s && (s === 'j' || s === 'q' || s === 'x' || s === 'y')) {
+                    if (y.startsWith('ü')) pinyin = s + 'u' + y.slice(1);
+                }
+                resultEl.textContent = pinyin;
+                resultEl.style.color = '#FFD700';
+                resultEl.classList.add('show');
+
+                // 若音调面板已打开，同步刷新内容（拼音变化时即更新）
+                if (updatePanel && document.getElementById('tonesPanel').classList.contains('show')) {
+                    updateTonesPanelContent();
+                }
+
+                return true;
+            } else {
+                resultEl.classList.remove('show');
+                return false;
+            }
+        }
+
+        // 左右键平滑导航：声母锁定时移动韵母球，韵母锁定时移动声母球
+        function navigateBall(dir) {
+            console.log('[navigateBall] called, dir:', dir);
+            const outerDeg = 360 / yunmu.length;
+            const innerDeg = 360 / shengmu.length;
+
+            if (state.lockedShengmuIdx !== null && state.lockedYunmuIdx === null) {
+                // 声母锁定 → 移动韵母球
+                console.log('[navigateBall] 声母锁定模式，lockedShengmuIdx:', state.lockedShengmuIdx);
+                const si = state.lockedShengmuIdx;
+                const validYunmuArr = validPinyinMap[si] || [];
+                console.log('[navigateBall] validYunmuArr for si', si, ':', validYunmuArr);
+                if (validYunmuArr.length === 0) {
+                    console.log('[navigateBall] validYunmuArr 为空，直接返回');
+                    return;
+                }
+
+                const curYi = Math.floor(((state.outerBallOffset % 360) + 360) % 360 / outerDeg);
+                console.log('[navigateBall] curYi:', curYi, '(from outerBallOffset:', state.outerBallOffset, ')');
+                const step = dir > 0 ? 1 : -1;
+                let nextYi = (curYi + step + yunmu.length) % yunmu.length;
+                let attempts = 0;
+                while (!validYunmuArr.includes(nextYi) && attempts < yunmu.length) {
+                    nextYi = (nextYi + step + yunmu.length) % yunmu.length;
+                    attempts++;
+                }
+                console.log('[navigateBall] 最终 nextYi:', nextYi, 'attempts:', attempts);
+                if (!validYunmuArr.includes(nextYi)) {
+                    console.log('[navigateBall] 未找到有效韵母，返回');
+                    return;
+                }
+
+                // 如果目标就是当前格子，不需要移动，直接更新面板
+                if (nextYi === curYi) {
+                    console.log('[navigateBall] 目标韵母就是当前格子，直接更新面板');
+                    updateCurrentPinyinFromBalls(true);
+                    return;
+                }
+
+                state.navigatingOuterTarget = nextYi * outerDeg + outerDeg * 0.5;
+                state.navigatingOuterDir = dir; // 1=顺时针, -1=逆时针
+                console.log('[navigateBall] 设置 navigatingOuterTarget:', state.navigatingOuterTarget, 'dir:', dir);
+                const trackHalf = (OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R;
+                state.outerBallRadialOffset = trackHalf * 0.98;
+                playTick(700, 0.06, 0.03);
+                updateCurrentPinyinFromBalls(true); // 停止后允许面板更新（动画过程中会被 isNavigating 拦住）
+
+            } else if (state.lockedYunmuIdx !== null && state.lockedShengmuIdx === null) {
+                // 韵母锁定 → 移动声母球
+                console.log('[navigateBall] 韵母锁定模式，lockedYunmuIdx:', state.lockedYunmuIdx);
+                const yi = state.lockedYunmuIdx;
+                const validShengmuArr = [];
+                for (const [siStr, yArr] of Object.entries(validPinyinMap)) {
+                    if (yArr.includes(yi)) validShengmuArr.push(parseInt(siStr));
+                }
+                console.log('[navigateBall] validShengmuArr for yi', yi, ':', validShengmuArr);
+                if (validShengmuArr.length === 0) {
+                    console.log('[navigateBall] validShengmuArr 为空，直接返回');
+                    return;
+                }
+
+                const curSi = Math.floor(((state.innerBallOffset % 360) + 360) % 360 / innerDeg);
+                console.log('[navigateBall] curSi:', curSi, '(from innerBallOffset:', state.innerBallOffset, ')');
+                const step = dir > 0 ? 1 : -1;
+                let nextSi = (curSi + step + shengmu.length) % shengmu.length;
+                let attempts = 0;
+                while (!validShengmuArr.includes(nextSi) && attempts < shengmu.length) {
+                    nextSi = (nextSi + step + shengmu.length) % shengmu.length;
+                    attempts++;
+                }
+                console.log('[navigateBall] 最终 nextSi:', nextSi, 'attempts:', attempts);
+                if (!validShengmuArr.includes(nextSi)) {
+                    console.log('[navigateBall] 未找到有效声母，返回');
+                    return;
+                }
+
+                // 如果目标就是当前格子，不需要移动，直接更新面板
+                if (nextSi === curSi) {
+                    console.log('[navigateBall] 目标声母就是当前格子，直接更新面板');
+                    updateCurrentPinyinFromBalls(true);
+                    return;
+                }
+
+                state.navigatingInnerTarget = nextSi * innerDeg + innerDeg * 0.5;
+                state.navigatingInnerDir = dir; // 1=顺时针, -1=逆时针
+                console.log('[navigateBall] 设置 navigatingInnerTarget:', state.navigatingInnerTarget, 'dir:', dir);
+                const trackHalf = (INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R;
+                state.innerBallRadialOffset = trackHalf * 0.98;
+                playTick(500, 0.06, 0.03);
+                updateCurrentPinyinFromBalls(true); // 停止后允许面板更新（动画过程中会被 isNavigating 拦住）
+            } else {
+                console.log('[navigateBall] 未满足条件，两个都不锁定或两个都锁定了，跳过');
+                console.log('  lockedShengmuIdx:', state.lockedShengmuIdx, 'lockedYunmuIdx:', state.lockedYunmuIdx);
+            }
+        }
+
+        function updateTonesPanelContent() {
             const s = shengmu[state.finalShengmuIdx] || '';
             const y = yunmu[state.finalYunmuIdx] || '';
             let base = s + y;
 
-            const panel = document.getElementById('tonesPanel');
             const list = document.getElementById('tonesList');
             const title = document.getElementById('panelTitle');
 
@@ -1429,7 +1688,25 @@
                 // 如果该音调没有对应的常用字，则不显示
                 if (chars.length === 0) continue;
 
-                const char = chars[Math.floor(Math.random() * chars.length)];
+                // 在未显示过的字符中随机选择，全部用完则重置记录
+                let shownSet = shownCharsMap.get(tonedKey);
+                if (!shownSet) {
+                    shownSet = new Set();
+                    shownCharsMap.set(tonedKey, shownSet);
+                }
+
+                const remainingIdx = chars
+                    .map((_, idx) => idx)
+                    .filter(idx => !shownSet.has(idx));
+
+                if (remainingIdx.length === 0) {
+                    shownSet.clear();
+                    remainingIdx.push(...chars.map((_, idx) => idx));
+                }
+
+                const pickIdx = remainingIdx[Math.floor(Math.random() * remainingIdx.length)];
+                shownSet.add(pickIdx);
+                const char = chars[pickIdx];
 
                 const item = document.createElement('div');
                 item.className = 'tone-item';
@@ -1443,8 +1720,11 @@
                 };
                 list.appendChild(item);
             }
+        }
 
-            panel.classList.add('show');
+        function showTonesPanel() {
+            updateTonesPanelContent();
+            document.getElementById('tonesPanel').classList.add('show');
         }
 
         function speak(text) {
@@ -1482,14 +1762,34 @@
                     } else {
                         state.lockedYunmuIdx = idx;
                         state.lockedShengmuIdx = null; // 互斥锁定
+                        state.navigatingInnerTarget = null; // 清除声母球的导航目标
+                        state.navigatingInnerDir = 0;
 
                         // 立即视觉同步：锁定即居中
                         state.outerBallOffset = idx * yunmuDeg + yunmuDeg * 0.5;
                         state.outerBallRadialOffset = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
                         state.outerBallVelocity = 0;
                         state.outerBallRadialVel = 0;
+
+                        // 同步内圈球到当前韵母的有效声母格（避免 navigateBall 从错误位置开始）
+                        const validShengmuArr = [];
+                        for (const [siStr, yArr] of Object.entries(validPinyinMap)) {
+                            if (yArr.includes(idx)) validShengmuArr.push(parseInt(siStr));
+                        }
+                        if (validShengmuArr.length > 0) {
+                            const shengmuDeg = 360 / shengmu.length;
+                            const curInnerSi = Math.floor(((state.innerBallOffset % 360) + 360) % 360 / shengmuDeg);
+                            const nearestSi = validShengmuArr.includes(curInnerSi)
+                                ? curInnerSi
+                                : validShengmuArr[0];
+                            state.innerBallOffset = (nearestSi + 0.5) * shengmuDeg;
+                            state.innerBallRadialOffset = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
+                            state.innerBallVelocity = 0;
+                            state.innerBallRadialVel = 0;
+                        }
                     }
                     playTick(600, 0.1, 0.05);
+                    updateCurrentPinyinFromBalls();
                 } else if (dist >= INNER_INNER_R && dist <= INNER_R) {
                     // 内圈 (声母)
                     const localAngle = (angle - state.innerAngle + 360) % 360;
@@ -1501,14 +1801,32 @@
                     } else {
                         state.lockedShengmuIdx = idx;
                         state.lockedYunmuIdx = null; // 互斥锁定
+                        state.navigatingOuterTarget = null; // 清除韵母球的导航目标
+                        state.navigatingOuterDir = 0;
 
                         // 立即视觉同步：锁定即居中
                         state.innerBallOffset = idx * shengmuDeg + shengmuDeg * 0.5;
                         state.innerBallRadialOffset = ((INNER_R - INNER_INNER_R) / 2 - INNER_BALL_R) * 0.98;
                         state.innerBallVelocity = 0;
                         state.innerBallRadialVel = 0;
+
+                        // 同步外圈球到当前声母的有效韵母格（避免 navigateBall 从错误位置开始）
+                        const validYunmuArr = validPinyinMap[idx] || [];
+                        if (validYunmuArr.length > 0) {
+                            const yunmuDeg = 360 / yunmu.length;
+                            // 优先用当前外圈球所在的格子（如果有效），否则选第一个有效韵母
+                            const curOuterYi = Math.floor(((state.outerBallOffset % 360) + 360) % 360 / yunmuDeg);
+                            const nearestYi = validYunmuArr.includes(curOuterYi)
+                                ? curOuterYi
+                                : validYunmuArr[0];
+                            state.outerBallOffset = (nearestYi + 0.5) * yunmuDeg;
+                            state.outerBallRadialOffset = ((OUTER_R - OUTER_INNER_R) / 2 - OUTER_BALL_R) * 0.98;
+                            state.outerBallVelocity = 0;
+                            state.outerBallRadialVel = 0;
+                        }
                     }
                     playTick(800, 0.1, 0.05);
+                    updateCurrentPinyinFromBalls();
                 } else {
                     // 点击中心区域或空白区域，开始旋转
                     startSpin();
@@ -1540,6 +1858,7 @@
             state.outerBallRadialOffset = initOuterTrackHalf * 0.98;
             state.innerBallRadialOffset = initInnerTrackHalf * 0.98;
         })()
+        updateCurrentPinyinFromBalls();
         animFrameId = requestAnimationFrame(gameLoop);
     </script>
 </body>
